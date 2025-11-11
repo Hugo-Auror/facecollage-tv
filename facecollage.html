@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Face Collage TV</title>
+  <style>
+    /* ====== TV-friendly styling ====== */
+    :root{
+      --bg:#000; --fg:#e6e6e6; --accent:#6ee7ff;
+      --scene-duration: 7000ms; /* default 7s between scenes */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+    #app{position:fixed;inset:0;overflow:hidden;background:var(--bg);}
+
+    /* Scene container uses CSS Grid for non-overlapping, irregular layout */
+    .scene{
+      position:absolute;inset:0;padding:2vmin;display:grid;gap:2vmin;
+      grid-template-columns: repeat(10, 1fr);
+      grid-auto-rows:minmax(6vmin, 1fr);
+      opacity:0;transform:scale(1.02);
+      transition:opacity 900ms ease, transform 1100ms ease;
+    }
+    .scene.active{opacity:1;transform:scale(1);}
+
+    .face{position:relative;border-radius:2vmin;overflow:hidden;box-shadow:0 0.8vmin 3vmin rgba(0,0,0,.5);}
+    .face img{width:100%;height:100%;object-fit:cover;display:block;}
+
+    /* Size buckets map to grid spans for irregularity */
+    .s{grid-column: span 2; grid-row: span 2;}
+    .m{grid-column: span 3; grid-row: span 3;}
+    .l{grid-column: span 4; grid-row: span 4;}
+    .xl{grid-column: span 5; grid-row: span 5;}
+
+    /* Subtle variance */
+    .tilt1{transform:rotate(-1.2deg);} .tilt2{transform:rotate(0.8deg);} .tilt3{transform:rotate(-0.6deg);} .tilt4{transform:rotate(1.4deg);} 
+
+    /* Minimal on-screen controls (hidden unless you move mouse or press Enter) */
+    #controls{position:fixed;left:50%;bottom:3vmin;transform:translateX(-50%);background:rgba(20,20,20,.7);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);border-radius:2vmin;padding:1vmin 2vmin;display:flex;gap:1.5vmin;align-items:center;opacity:0;transition:opacity .35s;}
+    #controls.visible{opacity:1}
+    #controls label{font-size:1.8vmin;opacity:.85}
+    #controls input[type="number"]{width:6ch;background:#111;color:#ddd;border:1px solid #333;border-radius:.8vmin;padding:.6vmin .8vmin;margin-left:.6vmin}
+    #controls input[type="range"]{accent-color:var(--accent)}
+    #controls button{background:var(--accent);border:none;color:#001018;font-weight:600;padding:.8vmin 1.4vmin;border-radius:1vmin;cursor:pointer}
+
+    /* Idle cursor hidden for TV look */
+    html,body{cursor:none}
+    html.show-cursor, html.show-cursor body{cursor:default}
+
+    /* Drop zone hint for uploading a JSON or CSV of image URLs */
+    #dropHint{position:fixed;inset:10vmin auto auto 50%;transform:translateX(-50%);padding:1vmin 1.6vmin;border-radius:1.2vmin;background:rgba(255,255,255,.08);border:1px dashed rgba(255,255,255,.25);font-size:1.8vmin;opacity:.7}
+
+    /* Fullscreen helper */
+    #fsTip{position:fixed;top:1.2vmin;right:1.6vmin;font-size:1.6vmin;opacity:.6}
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="dropHint">Drop a JSON/CSV of image URLs to load faces • Press <b>F</b> for fullscreen, <b>Enter</b> to toggle controls</div>
+  <div id="fsTip"></div>
+
+  <div id="controls" role="group" aria-label="Controls">
+    <label>Min faces <input id="minFaces" type="number" min="1" max="40" value="1"></label>
+    <label>Max faces <input id="maxFaces" type="number" min="1" max="40" value="9"></label>
+    <label>Interval (s) <input id="interval" type="number" min="2" max="120" value="7"></label>
+    <button id="shuffle">Shuffle now</button>
+  </div>
+
+  <script>
+  /*
+   * Face Collage TV — single-file app
+   * ------------------------------------------------------------
+   * HOW TO USE WITH AN ORG CHART
+   * 1) Provide an array of direct image URLs in `SOURCE.images`, 
+   *    OR drag & drop a JSON/CSV file containing URLs (one per row or as ["https://...", ...]).
+   * 2) Host this file somewhere reachable by the TV (or open from USB on TV browsers that allow it).
+   * 3) Open in the TV's browser, press F for fullscreen, and you’re done.
+   *
+   * SECURITY / PRIVACY NOTES
+   * - Make sure image URLs are accessible to the TV but not publicly indexed if sensitive.
+   * - If your org chart requires auth or an API, consider running a small internal proxy that emits an array of image URLs and enables CORS.
+   *
+   * OPTIONAL: Fetch from an internal endpoint returning `["url1","url2",...]`
+   *   await SOURCE.loadFromEndpoint("https://intranet.example.com/org/faces.json")
+   */
+
+  const SOURCE = {
+    images: [
+      // Replace these placeholders with your org headshots (direct JPG/PNG URLs).
+      // Example:
+       "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/aef562c7-4d84-4afe-a553-acb3ec9acaab?token=X19jbGRfdG9rZW5fXz1leHA9MTc2NzkyMTE1M35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmYWVmNTYyYzctNGQ4NC00YWZlLWE1NTMtYWNiM2VjOWFjYWFiKn5obWFjPWM5NmIzZGIxOGMwYmY4NTA5NzdkY2M5ZGQ0YWQ0YzNkMWFmMjAxNGI1ODljYjVlNzMxZjk2ZmRlMGUyZGM4MTQ=&vendor=cloudinary",
+       "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/7485899a-73b0-48db-a453-dcb8dc813922?token=X19jbGRfdG9rZW5fXz1leHA9MTc3MzAxMjA5M35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNzQ4NTg5OWEtNzNiMC00OGRiLWE0NTMtZGNiOGRjODEzOTIyKn5obWFjPWRkOGM5ODkyZDhhYWZmZjc2N2U2ZDUyNGMxNzU0NTIyMjllMzE3ODMzYjMyOGY5ZjI4MDg2MWFkYTgwODBjYmY=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/494a4fbe-8d20-44d0-98d0-512774c61e04?token=X19jbGRfdG9rZW5fXz1leHA9MTc2OTA0NDM0MH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNDk0YTRmYmUtOGQyMC00NGQwLTk4ZDAtNTEyNzc0YzYxZTA0Kn5obWFjPWY3NThhMThhY2VhYjAzNzMwNjhmYTUyMzIyOTRmZTk5MzdmZDc1ZjA3YWRjYjE0ZDNjZTExOGUyMzdiMzdjOWM=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/494a4fbe-8d20-44d0-98d0-512774c61e04?token=X19jbGRfdG9rZW5fXz1leHA9MTc2OTA0NDM0MH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNDk0YTRmYmUtOGQyMC00NGQwLTk4ZDAtNTEyNzc0YzYxZTA0Kn5obWFjPWY3NThhMThhY2VhYjAzNzMwNjhmYTUyMzIyOTRmZTk5MzdmZDc1ZjA3YWRjYjE0ZDNjZTExOGUyMzdiMzdjOWM=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/4e25e020-a6ac-4256-a4e1-f709938047e6?token=X19jbGRfdG9rZW5fXz1leHA9MTc3MTIwNDMyM35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNGUyNWUwMjAtYTZhYy00MjU2LWE0ZTEtZjcwOTkzODA0N2U2Kn5obWFjPTUyMTUwNTNmMmFjZDg3YjA5ZDU4YjBkZGY4OGZhMGJjMDQ0MWM3NTY1Y2I4ZTUzMWI0YjEyYzUwMTc0MGE3YzQ=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/c410a352-a078-48dd-b828-bb58c8a959a2?token=X19jbGRfdG9rZW5fXz1leHA9MTc2Mzg2MDMyN35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmYzQxMGEzNTItYTA3OC00OGRkLWI4MjgtYmI1OGM4YTk1OWEyKn5obWFjPThiYzNhMzYwNDZjODY0MGM5ZWQ3MmRlMTk1MWU2NDJkNWMxYzVlOWNkNzgzODBiMWE1M2MzNzZhZWFkYzBmNmQ=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/592fcfe1-1bec-4f7f-8fe4-045c075d7549?token=X19jbGRfdG9rZW5fXz1leHA9MTc3NDE0MTkyNn5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNTkyZmNmZTEtMWJlYy00ZjdmLThmZTQtMDQ1YzA3NWQ3NTQ5Kn5obWFjPTNmMDgyNjcyODg4YzdjZGQyZTgyZGRhNDMwOGQ0YzQ1YTdiYzVkMTYzODg5OGFkZjFiZDQ3N2UzZWI0ZjAxZDc=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/e5515341-eb59-4146-9268-0f024725fe0c?token=X19jbGRfdG9rZW5fXz1leHA9MTc2OTEzMDcyOX5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmZTU1MTUzNDEtZWI1OS00MTQ2LTkyNjgtMGYwMjQ3MjVmZTBjKn5obWFjPTljOWI1OTY2NWJlNDk5MDQ5OTMyZGI1NTBjYmQ4MDFkMzhkNzdkM2RjNTYxMTEyNmQ3Y2VhMjIyZDk1MzU1NjM=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/29f80a34-8aad-42be-b1c9-84184705ff4d?token=X19jbGRfdG9rZW5fXz1leHA9MTc2OTA0NDM0MH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmMjlmODBhMzQtOGFhZC00MmJlLWIxYzktODQxODQ3MDVmZjRkKn5obWFjPWJlOTg5MWRmYjAwZDkyMDA3ZTgyNTcyMGI2NjU4M2ZlNzEwOTVlNDg5NjJkMTM5YjQ3ZWYyOTY1YmMxZmM0YjQ=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/4a9f278e-2336-4ce5-8680-877b8c71a1eb?token=X19jbGRfdG9rZW5fXz1leHA9MTc3MzM2NDMyN35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNGE5ZjI3OGUtMjMzNi00Y2U1LTg2ODAtODc3YjhjNzFhMWViKn5obWFjPTNkZTgwYTc2ZmQ4YTRmOGZlN2EyNjVmOGY1NTM3ZDBlZWU3MTcxMGM5NjMwMDQ4YWZmNjVmMjAwNTM2YjI5OTg=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/cdb82a23-6978-4285-9479-ac68da7c65b3?token=X19jbGRfdG9rZW5fXz1leHA9MTc2ODM1MzEzM35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmY2RiODJhMjMtNjk3OC00Mjg1LTk0NzktYWM2OGRhN2M2NWIzKn5obWFjPWEyMmQ2MzRmMTBmMzdiNTVmZjc1NTI0YTA2NmU4Y2ViNDdmYzBlMjg5NTM1YTY1NmJhMGE3YmJmYWE2ZGUxYWE=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/1582d00a-2242-4869-87ce-61d2d027bf45?token=X19jbGRfdG9rZW5fXz1leHA9MTc3MzE1OTAxM35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmMTU4MmQwMGEtMjI0Mi00ODY5LTg3Y2UtNjFkMmQwMjdiZjQ1Kn5obWFjPWE3YWIwYzI1ZjZjZGYzMDliY2UyY2RmM2VmOTcxY2I2YTExZTk2N2E4ZWYwZmQxN2UxNDJhMzlkMGRlNjNmM2M=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/d739914a-a226-4827-9ab3-38cc0ec95d4f?token=X19jbGRfdG9rZW5fXz1leHA9MTc2NzIyOTkyM35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmZDczOTkxNGEtYTIyNi00ODI3LTlhYjMtMzhjYzBlYzk1ZDRmKn5obWFjPWEyMTYyOGFkNzZjNGFkOGU2MTM3YjQzZGM4YjdjNmQ4MjMyOTUwZWVjOWYxZjBkNTJiZTdjNTJmYjU2YjA2Y2M=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/d06c5d33-3ab5-4cff-a37c-03d6f08942c6?token=X19jbGRfdG9rZW5fXz1leHA9MTc2ODQzOTUyMn5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmZDA2YzVkMzMtM2FiNS00Y2ZmLWEzN2MtMDNkNmYwODk0MmM2Kn5obWFjPTA5ZWU3OGZmMzFjYjg4NjhhNzZkNzM3ZTZiYmZkNWY3OTdhZWM1Y2Y0Yzg2MTE2M2Q3MDJhNjRlNjZhYThiMDY=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/7897ccba-2eb2-4a9d-87bb-671d631932c3?token=X19jbGRfdG9rZW5fXz1leHA9MTc2NTI0Mjc1OH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNzg5N2NjYmEtMmViMi00YTlkLTg3YmItNjcxZDYzMTkzMmMzKn5obWFjPWFlMjczNmU0NDEwMTJiZGY2NjhhMTQ3MWJkMGIxZDJlYWFiMzc0MjI5ZGE1YmYwY2YxNzBiNzhhZmQ5M2YyZTk=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/677eb1f0-028b-418a-a1bf-def77c38d04c?token=X19jbGRfdG9rZW5fXz1leHA9MTc2OTA0NDM0MH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNjc3ZWIxZjAtMDI4Yi00MThhLWExYmYtZGVmNzdjMzhkMDRjKn5obWFjPTY1YmQxMTg0MGYxZmY1ZThiMDRhZDYwMGE4MGZiNjRmNzExNjA1NjllMWNkMTE0N2M1MTIwZDkzYjEzNWNkODk=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/40889e8d-f0b9-4ccd-bd3c-cb9e41749b35?token=X19jbGRfdG9rZW5fXz1leHA9MTc3Mzg4Mjc0MH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNDA4ODllOGQtZjBiOS00Y2NkLWJkM2MtY2I5ZTQxNzQ5YjM1Kn5obWFjPTJiYTJjMzQzODRlMjNkMDA0ZjU5ZTZiZTBhMzg3YTY2NjNjNDZkMjhiMWZlNjkyZGQ0Mzk3ODlmZTY1Zjc0MjM=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/5c35bc31-94f7-40cd-810b-0d01eaa87730?token=X19jbGRfdG9rZW5fXz1leHA9MTc3NTE3ODcyN35hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmNWMzNWJjMzEtOTRmNy00MGNkLTgxMGItMGQwMWVhYTg3NzMwKn5obWFjPTZmMjEwZjkzMmZlYTMyMDE2NDU3NjNhNDA4YWZhODJjOGZhNzNiMWNiZTVjMzA5NGY2NDc1MWE2MDZhNjFiNDI=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/0e24b79d-2d6f-4c2e-9aaa-fdfc505663c1?token=X19jbGRfdG9rZW5fXz1leHA9MTc2NzIyOTkyMX5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmMGUyNGI3OWQtMmQ2Zi00YzJlLTlhYWEtZmRmYzUwNTY2M2MxKn5obWFjPTU0MmM4MWRmZDUxNzMxYWZjNzU2MmRmMTVlOWY4YWQ2YzRmZGY3NjFiNDk1YWI0NTVjZGUzNTczNWQ2YTQ5NmM=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/8ddc1338-e0b1-4168-af6f-3b5777e4ced0?token=X19jbGRfdG9rZW5fXz1leHA9MTc3ODAyOTkyNH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmOGRkYzEzMzgtZTBiMS00MTY4LWFmNmYtM2I1Nzc3ZTRjZWQwKn5obWFjPWM5YTg3YzIwOTk0M2IzZTFkZjM4ZDc2MmE3Yzg1MTJiZWEyMzhmMjRhNDU0ZDkwZjAzOWE3MWVlYzI0YWI5NjE=&vendor=cloudinary",
+	   "https://media-process.hibob.com/image/upload/q_auto:best,f_auto,a_exif,t_avatar,c_fill,w_240,h_240/hibob/avatar/327665/images/2a7c6770-236f-438e-9012-f51ae7226cfc?token=X19jbGRfdG9rZW5fXz1leHA9MTc3ODAyOTkyNH5hY2w9KiUyZmhpYm9iJTJmYXZhdGFyJTJmMzI3NjY1JTJmaW1hZ2VzJTJmMmE3YzY3NzAtMjM2Zi00MzhlLTkwMTItZjUxYWU3MjI2Y2ZjKn5obWFjPWFhNzJhMTg4YzRlZTA3M2U3Mjg2ZjUzZmY1MjJiMzZmZjI0ZWFiYzcyYzQ3ZWJmMDA0ZmIzMmRlMTM3YmQ5MmE=&vendor=cloudinary"
+    ],
+    async loadFromEndpoint(url){
+      const res = await fetch(url, {cache:'no-store'});
+      if(!res.ok) throw new Error('Failed to fetch faces.json');
+      const data = await res.json();
+      if(Array.isArray(data)) this.images = data; else throw new Error('Endpoint must return an array of URLs');
+      return this.images;
+    }
+  };
+
+  const app = document.getElementById('app');
+  const controls = document.getElementById('controls');
+  const minFacesEl = document.getElementById('minFaces');
+  const maxFacesEl = document.getElementById('maxFaces');
+  const intervalEl = document.getElementById('interval');
+  const shuffleBtn = document.getElementById('shuffle');
+  const fsTip = document.getElementById('fsTip');
+
+  let timer = null;
+  let lastSceneEl = null;
+
+  function randInt(min, max){return Math.floor(Math.random() * (max - min + 1)) + min}
+  function sample(arr, n){
+    if(n>=arr.length) return [...arr].sort(()=>Math.random()-0.5);
+    const copy = [...arr]; const out=[];
+    for(let i=0;i<n;i++){ const idx = Math.floor(Math.random()*copy.length); out.push(copy.splice(idx,1)[0]); }
+    return out;
+  }
+
+  function randomSizeClass(i, total){
+    // Bias: when few faces, include some large tiles; when many, lean small
+    const p = Math.random();
+    if(total <= 2) return p < .5 ? 'xl' : 'l';
+    if(total <= 4) return p < .4 ? 'l' : (p < .8 ? 'm' : 'xl');
+    if(total <= 8) return p < .6 ? 'm' : (p < .9 ? 's' : 'l');
+    return p < .8 ? 's' : 'm';
+  }
+
+  function makeFace(url, sizeClass){
+    const d = document.createElement('div');
+    d.className = `face ${sizeClass} tilt${randInt(1,4)}`;
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.referrerPolicy = 'no-referrer';
+    img.alt = '';
+    img.src = url;
+    d.appendChild(img);
+    return d;
+  }
+
+  function newScene(){
+    const min = Math.max(1, parseInt(minFacesEl.value||'1',10));
+    const max = Math.max(min, parseInt(maxFacesEl.value||'9',10));
+    const total = SOURCE.images.length ? randInt(min, Math.min(max, SOURCE.images.length)) : randInt(min, max);
+
+    const scene = document.createElement('div');
+    scene.className = 'scene';
+
+    const picks = SOURCE.images.length ? sample(SOURCE.images, total) : new Array(total).fill('https://picsum.photos/seed/'+Math.random().toString(36).slice(2)+'/800/800');
+    for(let i=0;i<picks.length;i++){
+      const size = randomSizeClass(i, total);
+      scene.appendChild(makeFace(picks[i], size));
+    }
+
+    app.appendChild(scene);
+    requestAnimationFrame(()=>scene.classList.add('active'));
+
+    if(lastSceneEl){
+      const toRemove = lastSceneEl;
+      setTimeout(()=>{ toRemove.remove(); }, 1200); // after crossfade
+    }
+    lastSceneEl = scene;
+  }
+
+  function schedule(){
+    clearInterval(timer);
+    const ms = Math.max(2000, parseInt(intervalEl.value||'7',10) * 1000);
+    timer = setInterval(newScene, ms);
+  }
+
+  // Basic UX: show controls on key/mouse
+  let cursorTimeout;
+  function showControlsFor(ms=3000){
+    document.documentElement.classList.add('show-cursor');
+    controls.classList.add('visible');
+    clearTimeout(cursorTimeout);
+    cursorTimeout = setTimeout(()=>{controls.classList.remove('visible');document.documentElement.classList.remove('show-cursor');}, ms);
+  }
+
+  document.addEventListener('mousemove',()=>showControlsFor());
+  document.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ controls.classList.toggle('visible'); document.documentElement.classList.toggle('show-cursor'); }
+    if(e.key.toLowerCase() === 'f') toggleFullscreen();
+    if(e.key === ' ') { e.preventDefault(); newScene(); showControlsFor(); }
+  });
+
+  shuffleBtn.addEventListener('click', ()=>{ newScene(); showControlsFor(); });
+  [minFacesEl,maxFacesEl,intervalEl].forEach(el=> el.addEventListener('change', schedule));
+
+  function toggleFullscreen(){
+    if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
+    else{ document.exitFullscreen().catch(()=>{}); }
+    fsTip.textContent = document.fullscreenElement? 'Press F or Esc to exit fullscreen' : '';
+  }
+
+  // Drag & Drop loader (JSON array or CSV with one URL per row)
+  window.addEventListener('dragover', e=>{ e.preventDefault(); showControlsFor(5000); });
+  window.addEventListener('drop', async (e)=>{
+    e.preventDefault(); showControlsFor(5000);
+    const file = e.dataTransfer.files[0]; if(!file) return;
+    const text = await file.text();
+    try{
+      const arr = JSON.parse(text);
+      if(Array.isArray(arr)) SOURCE.images = arr; else throw 0;
+    }catch{
+      // try CSV/lines
+      SOURCE.images = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    }
+    // Ensure unique URLs
+    SOURCE.images = Array.from(new Set(SOURCE.images));
+    // Preload a few
+    SOURCE.images.slice(0, 20).forEach(src=>{ const i=new Image(); i.src=src; });
+    newScene();
+  }, false);
+
+  // Kickoff
+  newScene();
+  schedule();
+  showControlsFor(3500);
+  </script>
+</body>
+</html>
