@@ -53,12 +53,18 @@
 
     /* Fullscreen helper */
     #fsTip{position:fixed;top:1.2vmin;right:1.6vmin;font-size:1.6vmin;opacity:.6}
+
+    /* On-screen fullscreen button */
+    #fsBtn{position:fixed;right:2vmin;bottom:2vmin;background:var(--accent);color:#001018;border:none;border-radius:1.6vmin;padding:1.2vmin 1.6vmin;font-weight:700;box-shadow:0 .8vmin 2.4vmin rgba(0,0,0,.45);cursor:pointer;opacity:0;pointer-events:none;transition:opacity .35s}
+    #fsBtn.visible{opacity:1;pointer-events:auto}
+    #fsBtn:active{transform:translateY(1px)}
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div id="dropHint">Drop a JSON/CSV of image URLs to load faces • Press <b>F</b> for fullscreen, <b>Enter</b> to toggle controls</div>
   <div id="fsTip"></div>
+  <button id="fsBtn" aria-label="Enter fullscreen">⤢ Fullscreen</button>
 
   <div id="controls" role="group" aria-label="Controls">
     <label>Min faces <input id="minFaces" type="number" min="1" max="40" value="1"></label>
@@ -127,6 +133,7 @@
   const intervalEl = document.getElementById('interval');
   const shuffleBtn = document.getElementById('shuffle');
   const fsTip = document.getElementById('fsTip');
+  const fsBtn = document.getElementById('fsBtn');
 
   let timer = null;
   let lastSceneEl = null;
@@ -200,26 +207,35 @@
     cursorTimeout = setTimeout(()=>{controls.classList.remove('visible');document.documentElement.classList.remove('show-cursor');}, ms);
   }
 
-  document.addEventListener('mousemove',()=>showControlsFor());
+  document.addEventListener('mousemove',()=>{showControlsFor(); showFsBtnFor();});
   document.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter'){ controls.classList.toggle('visible'); document.documentElement.classList.toggle('show-cursor'); }
     if(e.key.toLowerCase() === 'f') toggleFullscreen();
     if(e.key === ' ') { e.preventDefault(); newScene(); showControlsFor(); }
   });
 
-  shuffleBtn.addEventListener('click', ()=>{ newScene(); showControlsFor(); });
+  shuffleBtn.addEventListener('click', ()=>{ newScene(); showControlsFor(); showFsBtnFor(); });
+  fsBtn.addEventListener('click', ()=>{ toggleFullscreen(); showFsBtnFor(); });
+  window.addEventListener('touchstart', ()=>{ showControlsFor(); showFsBtnFor(); }, {passive:true});
   [minFacesEl,maxFacesEl,intervalEl].forEach(el=> el.addEventListener('change', schedule));
 
   function toggleFullscreen(){
     if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
     else{ document.exitFullscreen().catch(()=>{}); }
+    fsTip.textContent = document.fullscreenElement? 'Press F or use the button to exit fullscreen' : '';
+    // show tip briefly, then hide
+    if(fsTip.textContent){
+      setTimeout(()=>{ fsTip.textContent=''; }, 5000);
+    }
+  }); }
+    else{ document.exitFullscreen().catch(()=>{}); }
     fsTip.textContent = document.fullscreenElement? 'Press F or Esc to exit fullscreen' : '';
   }
 
   // Drag & Drop loader (JSON array or CSV with one URL per row)
-  window.addEventListener('dragover', e=>{ e.preventDefault(); showControlsFor(5000); });
+  window.addEventListener('dragover', e=>{ e.preventDefault(); showControlsFor(5000); showFsBtnFor(5000); });
   window.addEventListener('drop', async (e)=>{
-    e.preventDefault(); showControlsFor(5000);
+    e.preventDefault(); showControlsFor(5000); showFsBtnFor(5000);
     const file = e.dataTransfer.files[0]; if(!file) return;
     const text = await file.text();
     try{
@@ -227,7 +243,9 @@
       if(Array.isArray(arr)) SOURCE.images = arr; else throw 0;
     }catch{
       // try CSV/lines
-      SOURCE.images = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      SOURCE.images = text.split(/
+?
+/).map(s=>s.trim()).filter(Boolean);
     }
     // Ensure unique URLs
     SOURCE.images = Array.from(new Set(SOURCE.images));
@@ -236,10 +254,23 @@
     newScene();
   }, false);
 
+  // Helper to show/hide the on-screen fullscreen button
+  let fsBtnTimeout;
+  function showFsBtnFor(ms=4000){
+    fsBtn.classList.add('visible');
+    clearTimeout(fsBtnTimeout);
+    fsBtnTimeout = setTimeout(()=> fsBtn.classList.remove('visible'), ms);
+  }
+
+  // Auto-hide the drop hint and tip after a short delay
+  setTimeout(()=>{ const h=document.getElementById('dropHint'); if(h) h.remove(); }, 7000);
+  setTimeout(()=>{ fsTip.textContent=''; }, 7000);
+
   // Kickoff
   newScene();
   schedule();
   showControlsFor(3500);
+  showFsBtnFor(6000);
   </script>
 </body>
 </html>
