@@ -8,7 +8,7 @@
     /* ====== TV-friendly styling ====== */
     :root{
       --bg:#000; --fg:#e6e6e6; --accent:#6ee7ff;
-      --scene-duration: 7000ms; /* default 7s between scenes */
+      --scene-duration: 5000ms; /* default 7s between scenes */
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
@@ -62,7 +62,7 @@
 
   <div id="controls" role="group" aria-label="Controls">
     <label>Min faces <input id="minFaces" type="number" min="1" max="40" value="1"></label>
-    <label>Max faces <input id="maxFaces" type="number" min="1" max="40" value="9"></label>
+    <label>Max faces <input id="maxFaces" type="number" min="1" max="40" value="5"></label>
     <label>Interval (s) <input id="interval" type="number" min="2" max="120" value="7"></label>
     <button id="shuffle">Shuffle now</button>
   </div>
