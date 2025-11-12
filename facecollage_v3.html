@@ -70,6 +70,7 @@
   <div id="app"></div>
   <div id="dropHint">Drop a JSON/CSV of image URLs to load faces • Press <b>F</b> for fullscreen, <b>Enter</b> to toggle controls</div>
   <div id="fsTip"></div>
+  <button id="fsBtn" aria-label="Enter fullscreen">⤢ Fullscreen</button>
 
   <div id="controls" role="group" aria-label="Controls">
     <label>Min faces <input id="minFaces" type="number" min="1" max="40" value="1"></label>
@@ -161,7 +162,8 @@
   const intervalEl = document.getElementById('interval');
   const shuffleBtn = document.getElementById('shuffle');
   const fsTip = document.getElementById('fsTip');
-
+  const fsBtn = document.getElementById('fsBtn');
+	  
   let timer = null;
   let lastSceneEl = null;
 
@@ -232,7 +234,13 @@
     controls.classList.add('visible');
     clearTimeout(cursorTimeout);
     cursorTimeout = setTimeout(()=>{controls.classList.remove('visible');document.documentElement.classList.remove('show-cursor');}, ms);
-  }
+  },
+  let fsBtnTimeout;
+  function showFsBtnFor(ms=4000){
+    fsBtn.classList.add('visible');
+    clearTimeout(fsBtnTimeout);
+    fsBtnTimeout = setTimeout(()=> fsBtn.classList.remove('visible'), ms);
+}
 
   document.addEventListener('mousemove',()=>showControlsFor());
   document.addEventListener('keydown', (e)=>{
@@ -243,12 +251,17 @@
 
   shuffleBtn.addEventListener('click', ()=>{ newScene(); showControlsFor(); });
   [minFacesEl,maxFacesEl,intervalEl].forEach(el=> el.addEventListener('change', schedule));
+  fsBtn.addEventListener('click', ()=>{ toggleFullscreen(); showFsBtnFor(); });
+  window.addEventListener('touchstart', ()=>{ showControlsFor(); showFsBtnFor(); }, {passive:true});
+  document.addEventListener('mousemove', ()=>{ showFsBtnFor(); }, {passive:true});
 
   function toggleFullscreen(){
-    if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
-    else{ document.exitFullscreen().catch(()=>{}); }
-    fsTip.textContent = document.fullscreenElement? 'Press F or Esc to exit fullscreen' : '';
-  }
+  if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
+  else{ document.exitFullscreen().catch(()=>{}); }
+  fsTip.textContent = document.fullscreenElement? 'Press F or use the button to exit fullscreen' : '';
+  if(fsTip.textContent){ setTimeout(()=>{ fsTip.textContent=''; }, 5000); } // hide after 5s
+}
+
 
   // Drag & Drop loader (JSON array or CSV with one URL per row)
   window.addEventListener('dragover', e=>{ e.preventDefault(); showControlsFor(5000); });
@@ -274,6 +287,8 @@
   newScene();
   schedule();
   showControlsFor(3500);
+  showFsBtnFor(6000);          // show button for a few seconds on load
+  setTimeout(()=>{ fsTip.textContent=''; }, 7000); // auto-hide the tip after 7s
   </script>
 </body>
 </html>
