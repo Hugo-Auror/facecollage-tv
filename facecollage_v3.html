@@ -294,7 +294,27 @@
   schedule();
   showControlsFor(3500);
   showFsBtnFor(6000);                  // show button briefly on load
-  setTimeout(()=>{ fsTip.textContent=''; }, 7000); // auto-hide initial tip
+  
+  // Kickoff
+newScene();
+schedule();
+showControlsFor(3500);
+showFsBtnFor(6000);
+setTimeout(()=>{ fsTip.textContent=''; }, 7000);
+// 🕒 Auto-hide the "Drop a JSON/CSV..." message after 3s of idleness
+let dropHint = document.getElementById('dropHint');
+let dropTimeout;
+function hideDropHintAfterIdle(ms=3000){
+  clearTimeout(dropTimeout);
+  dropTimeout = setTimeout(()=>{
+    if(dropHint){ dropHint.remove(); dropHint = null; }
+  }, ms);
+}
+// reset the timer on any activity
+['mousemove','keydown','touchstart'].forEach(evt=>{
+  window.addEventListener(evt, ()=>hideDropHintAfterIdle(), {passive:true});
+});
+hideDropHintAfterIdle(); // start countdown immediately
   </script>
 </body>
 </html>
